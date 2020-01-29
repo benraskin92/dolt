@@ -85,7 +85,7 @@ func (nfd encodedColumn) decodeColumn() (schema.Column, error) {
 			return schema.Column{}, err
 		}
 	} else if nfd.Kind != "" && nfd.TypeInfo.Type == "" { // old format
-		typeInfo = typeinfo.DefaultTypeInfo(schema.LwrStrToKind[nfd.Kind])
+		typeInfo = typeinfo.FromKind(schema.LwrStrToKind[nfd.Kind])
 	} else {
 		return schema.Column{}, errors.New("cannot decode column due to unknown schema format")
 	}
@@ -107,8 +107,8 @@ func (encCnst encodedConstraint) decodeColConstraint() schema.ColConstraint {
 }
 
 type encodedTypeInfo struct {
-	Type   string            `noms:"typeinfo_type" json:"typeinfo_type"`
-	Params map[string]string `noms:"typeinfo_params" json:"typeinfo_params"`
+	Type   string            `noms:"type" json:"type"`
+	Params map[string]string `noms:"params" json:"params"`
 }
 
 func encodeTypeInfo(ti typeinfo.TypeInfo) encodedTypeInfo {
@@ -117,7 +117,7 @@ func encodeTypeInfo(ti typeinfo.TypeInfo) encodedTypeInfo {
 
 func (enc encodedTypeInfo) decodeTypeInfo() (typeinfo.TypeInfo, error) {
 	id := typeinfo.ParseIdentifier(enc.Type)
-	return typeinfo.TypeInfoFromIdentifierParams(id, enc.Params)
+	return typeinfo.FromTypeParams(id, enc.Params)
 }
 
 type schemaData struct {

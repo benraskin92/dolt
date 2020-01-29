@@ -17,6 +17,7 @@ package row
 import (
 	"errors"
 	"fmt"
+
 	"github.com/liquidata-inc/dolt/go/libraries/doltcore/schema"
 	"github.com/liquidata-inc/dolt/go/libraries/utils/valutil"
 	"github.com/liquidata-inc/dolt/go/store/types"

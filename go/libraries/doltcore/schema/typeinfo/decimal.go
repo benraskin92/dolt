@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,24 +18,25 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 const (
 	decimalTypeParam_Precision = "prec"
-	decimalTypeParam_Scale = "scale"
+	decimalTypeParam_Scale     = "scale"
 )
 
 // This is a dolt implementation of the MySQL type Decimal, thus most of the functionality
 // within is directly reliant on the go-mysql-server implementation.
-type decimalImpl struct{
+type decimalImpl struct {
 	sqlDecimalType sql.DecimalType
 }
 
 var _ TypeInfo = (*decimalImpl)(nil)
 
-func CreateDecimalType(params map[string]string) (TypeInfo, error) {
+func CreateDecimalTypeFromParams(params map[string]string) (TypeInfo, error) {
 	var precision uint8
 	if precisionStr, ok := params[decimalTypeParam_Precision]; ok {
 		precisionUint, err := strconv.ParseUint(precisionStr, 10, 8)
@@ -72,12 +73,19 @@ func (ti *decimalImpl) ConvertNomsValueToValue(v types.Value) (interface{}, erro
 		}
 		return res, nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
 // ConvertValueToNomsValue implements TypeInfo interface.
 func (ti *decimalImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
+		switch v.(type) {
+		case nil, types.Null:
+			return types.NullValue, nil
+		}
 		return types.String(artifact), nil
 	}
 	return nil, fmt.Errorf(`"%v" cannot convert value "%v" of type "%T" as it is invalid`, ti.String(), v, v)
@@ -97,14 +105,14 @@ func (ti *decimalImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *decimalImpl) GetTypeIdentifier() Identifier {
-	return DecimalType
+	return DecimalTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
 func (ti *decimalImpl) GetTypeParams() map[string]string {
 	return map[string]string{
 		decimalTypeParam_Precision: strconv.FormatUint(uint64(ti.sqlDecimalType.Precision()), 10),
-		decimalTypeParam_Scale: strconv.FormatUint(uint64(ti.sqlDecimalType.Scale()), 10),
+		decimalTypeParam_Scale:     strconv.FormatUint(uint64(ti.sqlDecimalType.Scale()), 10),
 	}
 }
 
@@ -133,8 +141,12 @@ func (ti *decimalImpl) ToSqlType() sql.Type {
 // Some validity checks process the value into its final form, which may be returned
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *decimalImpl) isValid(v interface{}) (artifact string, ok bool) {
-	// convert some Noms values to their standard golang equivalents
+	// convert some Noms values to their standard golang equivalents, except Null
 	switch val := v.(type) {
+	case nil:
+		return "", true
+	case types.Null:
+		return "", true
 	case types.Bool:
 		v = bool(val)
 	case types.Int:

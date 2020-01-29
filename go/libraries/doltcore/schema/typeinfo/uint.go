@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,42 +25,51 @@ import (
 )
 
 type UintWidth int8
+
 const (
-	UintWidth8 UintWidth = 8
-	UintWidth16 UintWidth = 16
-	UintWidth24 UintWidth = 24
-	UintWidth32 UintWidth = 32
-	UintWidth64 UintWidth = 64
+	UintWidth8          UintWidth = 8
+	UintWidth16         UintWidth = 16
+	UintWidth24         UintWidth = 24
+	UintWidth32         UintWidth = 32
+	UintWidth64         UintWidth = 64
+	uintTypeParam_Width           = "width"
 )
 
 const (
 	MaxUint24 = 1 << 24
 )
 
-type uintImpl struct{
+type uintImpl struct {
 	Width UintWidth
 }
 
 var _ TypeInfo = (*uintImpl)(nil)
+var (
+	Uint8Type  TypeInfo = &uintImpl{UintWidth8}
+	Uint16Type TypeInfo = &uintImpl{UintWidth16}
+	Uint24Type TypeInfo = &uintImpl{UintWidth24}
+	Uint32Type TypeInfo = &uintImpl{UintWidth32}
+	Uint64Type TypeInfo = &uintImpl{UintWidth64}
+)
 
-func CreateUintType(params map[string]string) (TypeInfo, error) {
-	if width, ok := params["w"]; ok {
+func CreateUintTypeFromParams(params map[string]string) (TypeInfo, error) {
+	if width, ok := params[uintTypeParam_Width]; ok {
 		switch width {
 		case "8":
-			return &uintImpl{UintWidth8}, nil
+			return Uint8Type, nil
 		case "16":
-			return &uintImpl{UintWidth16}, nil
+			return Uint16Type, nil
 		case "24":
-			return &uintImpl{UintWidth24}, nil
+			return Uint24Type, nil
 		case "32":
-			return &uintImpl{UintWidth32}, nil
+			return Uint32Type, nil
 		case "64":
-			return &uintImpl{UintWidth64}, nil
+			return Uint64Type, nil
 		default:
-			return nil, fmt.Errorf(`create uint type info has "w" param with value "%v"`, width)
+			return nil, fmt.Errorf(`create uint type info has "%v" param with value "%v"`, uintTypeParam_Width, width)
 		}
 	}
-	return nil, fmt.Errorf(`create uint type info is missing "w" param`)
+	return nil, fmt.Errorf(`create uint type info is missing "%v" param`, uintTypeParam_Width)
 }
 
 // ConvertNomsValueToValue implements TypeInfo interface.
@@ -81,6 +90,9 @@ func (ti *uintImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 			panic(fmt.Errorf(`uint width "%v" is not valid`, ti.Width))
 		}
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -88,6 +100,8 @@ func (ti *uintImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 func (ti *uintImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			if val {
 				return types.Uint(1), nil
@@ -119,6 +133,8 @@ func (ti *uintImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) 
 			return types.Uint(val), nil
 		case string:
 			return types.Uint(artifact), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			if val {
 				return types.Uint(1), nil
@@ -152,12 +168,12 @@ func (ti *uintImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *uintImpl) GetTypeIdentifier() Identifier {
-	return UintType
+	return UintTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
 func (ti *uintImpl) GetTypeParams() map[string]string {
-	return map[string]string{"w":strconv.Itoa(int(ti.Width))}
+	return map[string]string{uintTypeParam_Width: strconv.Itoa(int(ti.Width))}
 }
 
 // IsValid implements TypeInfo interface.
@@ -228,6 +244,8 @@ func (ti *uintImpl) isValid(v interface{}) (artifact uint64, ok bool) {
 	}
 
 	switch val := v.(type) {
+	case nil:
+		return 0, true
 	case bool:
 		return 0, true
 	case int:
@@ -257,6 +275,8 @@ func (ti *uintImpl) isValid(v interface{}) (artifact uint64, ok bool) {
 	case string:
 		uintVal, err := strconv.ParseUint(val, 10, 64)
 		return uintVal, err == nil
+	case types.Null:
+		return 0, true
 	case types.Bool:
 		return 0, true
 	case types.Int:

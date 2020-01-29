@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,29 +25,35 @@ import (
 )
 
 type FloatWidth int8
+
 const (
-	FloatWidth32 FloatWidth = 32
-	FloatWidth64 FloatWidth = 64
+	FloatWidth32         FloatWidth = 32
+	FloatWidth64         FloatWidth = 64
+	floatTypeParam_Width            = "width"
 )
 
-type floatImpl struct{
+type floatImpl struct {
 	Width FloatWidth
 }
 
 var _ TypeInfo = (*floatImpl)(nil)
+var (
+	Float32Type TypeInfo = &floatImpl{FloatWidth32}
+	Float64Type TypeInfo = &floatImpl{FloatWidth64}
+)
 
-func CreateFloatType(params map[string]string) (TypeInfo, error) {
-	if width, ok := params["w"]; ok {
+func CreateFloatTypeFromParams(params map[string]string) (TypeInfo, error) {
+	if width, ok := params[floatTypeParam_Width]; ok {
 		switch width {
 		case "32":
-			return &floatImpl{FloatWidth32}, nil
+			return Float32Type, nil
 		case "64":
-			return &floatImpl{FloatWidth64}, nil
+			return Float64Type, nil
 		default:
-			return nil, fmt.Errorf(`create float type info has "w" param with value "%v"`, width)
+			return nil, fmt.Errorf(`create float type info has "%v" param with value "%v"`, floatTypeParam_Width, width)
 		}
 	}
-	return nil, fmt.Errorf(`create float type info is missing "w" param`)
+	return nil, fmt.Errorf(`create float type info is missing "%v" param`, floatTypeParam_Width)
 }
 
 // ConvertNomsValueToValue implements TypeInfo interface.
@@ -62,6 +68,9 @@ func (ti *floatImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error)
 			panic(fmt.Errorf(`float width "%v" is not valid`, ti.Width))
 		}
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -69,6 +78,8 @@ func (ti *floatImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error)
 func (ti *floatImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			if val {
 				return types.Float(1), nil
@@ -100,6 +111,8 @@ func (ti *floatImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error)
 			return types.Float(val), nil
 		case string:
 			return types.Float(artifact), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			if val {
 				return types.Float(1), nil
@@ -133,12 +146,12 @@ func (ti *floatImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *floatImpl) GetTypeIdentifier() Identifier {
-	return FloatType
+	return FloatTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
 func (ti *floatImpl) GetTypeParams() map[string]string {
-	return map[string]string{"w":strconv.Itoa(int(ti.Width))}
+	return map[string]string{floatTypeParam_Width: strconv.Itoa(int(ti.Width))}
 }
 
 // IsValid implements TypeInfo interface.
@@ -181,6 +194,8 @@ func (ti *floatImpl) ToSqlType() sql.Type {
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *floatImpl) isValid(v interface{}) (artifact float64, ok bool) {
 	switch val := v.(type) {
+	case nil:
+		return 0, true
 	case bool:
 		return 0, true
 	case int:
@@ -213,6 +228,8 @@ func (ti *floatImpl) isValid(v interface{}) (artifact float64, ok bool) {
 	case string:
 		fltVal, err := strconv.ParseFloat(val, 64)
 		return fltVal, err == nil
+	case types.Null:
+		return 0, true
 	case types.Bool:
 		return 0, true
 	case types.Int:

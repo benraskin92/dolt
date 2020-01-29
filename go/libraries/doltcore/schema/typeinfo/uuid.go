@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,24 +16,27 @@ package typeinfo
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
 	"vitess.io/vitess/go/sqltypes"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 type uuidImpl struct{}
 
 var _ TypeInfo = (*uuidImpl)(nil)
 
-func CreateUuidType(map[string]string) (TypeInfo, error) {
-	return &uuidImpl{}, nil
-}
+var UuidType TypeInfo = &uuidImpl{}
 
 // ConvertNomsValueToValue implements TypeInfo interface.
 func (ti *uuidImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 	if val, ok := v.(types.UUID); ok {
 		return val.String(), nil
+	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
 	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
@@ -42,8 +45,12 @@ func (ti *uuidImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 func (ti *uuidImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case string:
 			return types.UUID(artifact), nil
+		case types.Null:
+			return types.NullValue, nil
 		case uuid.UUID:
 			return types.UUID(val), nil
 		case types.String:
@@ -68,7 +75,7 @@ func (ti *uuidImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *uuidImpl) GetTypeIdentifier() Identifier {
-	return UuidType
+	return UuidTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -102,9 +109,13 @@ func (ti *uuidImpl) ToSqlType() sql.Type {
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *uuidImpl) isValid(v interface{}) (artifact uuid.UUID, ok bool) {
 	switch val := v.(type) {
+	case nil:
+		return uuid.UUID{}, true
 	case string:
 		valUuid, err := uuid.Parse(val)
 		return valUuid, err == nil
+	case types.Null:
+		return uuid.UUID{}, true
 	case uuid.UUID:
 		return val, true
 	case types.String:

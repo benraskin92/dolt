@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,15 +17,15 @@ package typeinfo
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/src-d/go-mysql-server/sql"
 	"vitess.io/vitess/go/sqltypes"
 
 	"github.com/liquidata-inc/dolt/go/store/types"
-
-	"github.com/src-d/go-mysql-server/sql"
 )
 
 const (
-	varBinaryTypeParam_Length = "length"
+	varBinaryTypeParam_Length   = "length"
 	varBinaryTypeParam_PadBytes = "pad"
 )
 
@@ -33,14 +33,14 @@ const (
 // as a string that is interpreted as raw bytes, rather than as a bespoke data structure,
 // and thus this is mirrored here in its implementation. This will minimize any differences
 // that could arise.
-type varBinaryImpl struct{
+type varBinaryImpl struct {
 	MaxLength int64
-	PadBytes bool
+	PadBytes  bool
 }
 
 var _ TypeInfo = (*varBinaryImpl)(nil)
 
-func CreateVarBinaryType(params map[string]string) (TypeInfo, error) {
+func CreateVarBinaryTypeFromParams(params map[string]string) (TypeInfo, error) {
 	ti := &varBinaryImpl{}
 	var err error
 	if lengthStr, ok := params[varBinaryTypeParam_Length]; ok {
@@ -65,6 +65,9 @@ func (ti *varBinaryImpl) ConvertNomsValueToValue(v types.Value) (interface{}, er
 		}
 		return string(val), nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -72,6 +75,8 @@ func (ti *varBinaryImpl) ConvertNomsValueToValue(v types.Value) (interface{}, er
 func (ti *varBinaryImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			if val {
 				return types.String("1"), nil
@@ -106,6 +111,8 @@ func (ti *varBinaryImpl) ConvertValueToNomsValue(v interface{}) (types.Value, er
 				return types.String(ti.padBytes(val)), nil
 			}
 			return types.String(val), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			if val {
 				return types.String("1"), nil
@@ -118,7 +125,7 @@ func (ti *varBinaryImpl) ConvertValueToNomsValue(v interface{}) (types.Value, er
 		case types.Float:
 			return types.String(artifact), nil
 		case types.String:
-			if ti.PadBytes{
+			if ti.PadBytes {
 				return types.String(ti.padBytes(string(val))), nil
 			}
 			return val, nil
@@ -142,13 +149,13 @@ func (ti *varBinaryImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *varBinaryImpl) GetTypeIdentifier() Identifier {
-	return VarBinaryType
+	return VarBinaryTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
 func (ti *varBinaryImpl) GetTypeParams() map[string]string {
 	typeParams := map[string]string{
-		varBinaryTypeParam_Length:  strconv.FormatInt(ti.MaxLength, 10),
+		varBinaryTypeParam_Length: strconv.FormatInt(ti.MaxLength, 10),
 	}
 	if ti.PadBytes {
 		typeParams[varBinaryTypeParam_PadBytes] = ""
@@ -180,15 +187,20 @@ func (ti *varBinaryImpl) String() string {
 func (ti *varBinaryImpl) ToSqlType() sql.Type {
 	// Binary is the only type that pads bytes.
 	if ti.PadBytes {
-		sqlType, err := sql.CreateBlob(sqltypes.Binary, ti.MaxLength)
+		sqlType, err := sql.CreateBinary(sqltypes.Binary, ti.MaxLength)
 		if err == nil {
 			return sqlType
 		}
 	}
 	// VarBinary is more restrictive than Blob
-	sqlType, err := sql.CreateBlob(sqltypes.VarBinary, ti.MaxLength)
+	sqlType, err := sql.CreateBinary(sqltypes.VarBinary, ti.MaxLength)
 	if err != nil {
-		sqlType, err = sql.CreateBlob(sqltypes.Blob, ti.MaxLength)
+		// The SQL type has a max character limit
+		maxLength := ti.MaxLength
+		if maxLength > sql.LongBlob.MaxCharacterLength() {
+			maxLength = sql.LongBlob.MaxCharacterLength()
+		}
+		sqlType, err = sql.CreateBinary(sqltypes.Blob, maxLength)
 		if err != nil {
 			panic(err)
 		}
@@ -201,6 +213,8 @@ func (ti *varBinaryImpl) ToSqlType() sql.Type {
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *varBinaryImpl) isValid(v interface{}) (artifact string, ok bool) {
 	switch val := v.(type) {
+	case nil:
+		return "", true
 	case bool:
 		return "", ti.MaxLength >= 1
 	case int:
@@ -241,6 +255,8 @@ func (ti *varBinaryImpl) isValid(v interface{}) (artifact string, ok bool) {
 		return strVal, int64(len(strVal)) <= ti.MaxLength
 	case string:
 		return "", int64(len(val)) <= ti.MaxLength
+	case types.Null:
+		return "", true
 	case types.Bool:
 		return "", ti.MaxLength >= 1
 	case types.Int:
@@ -262,7 +278,7 @@ func (ti *varBinaryImpl) isValid(v interface{}) (artifact string, ok bool) {
 // padBytes pads a string with zero bytes if the string length is less than the max length.
 func (ti *varBinaryImpl) padBytes(v string) string {
 	if int64(len(v)) < ti.MaxLength {
-		return string(append([]byte(v), make([]byte, ti.MaxLength - int64(len(v)))...))
+		return string(append([]byte(v), make([]byte, ti.MaxLength-int64(len(v)))...))
 	}
 	return v
 }

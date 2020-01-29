@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ package typeinfo
 
 import (
 	"fmt"
+
 	"github.com/src-d/go-mysql-server/sql"
 	"vitess.io/vitess/go/sqltypes"
 
@@ -25,41 +26,45 @@ import (
 type Identifier string
 
 const (
-	UnknownType    Identifier = "unknown"
-	BitType        Identifier = "bit"
-	BoolType       Identifier = "bool"
-	DatetimeType   Identifier = "datetime"
-	DecimalType    Identifier = "decimal"
-	EnumType       Identifier = "enum"
-	FloatType      Identifier = "float"
-	InlineBlobType Identifier = "inlineblob"
-	IntType        Identifier = "int"
-	SetType        Identifier = "set"
-	TimeType       Identifier = "time"
-	UintType       Identifier = "uint"
-	UuidType       Identifier = "uuid"
-	VarBinaryType  Identifier = "varbinary"
-	VarStringType  Identifier = "varstring"
-	YearType       Identifier = "year"
+	UnknownTypeIdentifier    Identifier = "unknown"
+	BitTypeIdentifier        Identifier = "bit"
+	BoolTypeIdentifier       Identifier = "bool"
+	DatetimeTypeIdentifier   Identifier = "datetime"
+	DecimalTypeIdentifier    Identifier = "decimal"
+	EnumTypeIdentifier       Identifier = "enum"
+	FloatTypeIdentifier      Identifier = "float"
+	InlineBlobTypeIdentifier Identifier = "inlineblob"
+	IntTypeIdentifier        Identifier = "int"
+	NullTypeIdentifier       Identifier = "null"
+	SetTypeIdentifier        Identifier = "set"
+	TimeTypeIdentifier       Identifier = "time"
+	TupleIdentifier          Identifier = "tuple"
+	UintTypeIdentifier       Identifier = "uint"
+	UuidTypeIdentifier       Identifier = "uuid"
+	VarBinaryTypeIdentifier  Identifier = "varbinary"
+	VarStringTypeIdentifier  Identifier = "varstring"
+	YearTypeIdentifier       Identifier = "year"
 )
 
 var Identifiers = map[Identifier]struct{}{
-	UnknownType:    {},
-	BitType:        {},
-	BoolType:       {},
-	DatetimeType:   {},
-	DecimalType:    {},
-	EnumType:       {},
-	FloatType:      {},
-	IntType:        {},
-	InlineBlobType: {},
-	SetType:        {},
-	TimeType:       {},
-	UintType:       {},
-	UuidType:       {},
-	VarBinaryType:  {},
-	VarStringType:  {},
-	YearType:       {},
+	UnknownTypeIdentifier:    {},
+	BitTypeIdentifier:        {},
+	BoolTypeIdentifier:       {},
+	DatetimeTypeIdentifier:   {},
+	DecimalTypeIdentifier:    {},
+	EnumTypeIdentifier:       {},
+	FloatTypeIdentifier:      {},
+	InlineBlobTypeIdentifier: {},
+	IntTypeIdentifier:        {},
+	NullTypeIdentifier:       {},
+	SetTypeIdentifier:        {},
+	TimeTypeIdentifier:       {},
+	TupleIdentifier:          {},
+	UintTypeIdentifier:       {},
+	UuidTypeIdentifier:       {},
+	VarBinaryTypeIdentifier:  {},
+	VarStringTypeIdentifier:  {},
+	YearTypeIdentifier:       {},
 }
 
 // TypeInfo is an interface used for encoding type information.
@@ -96,37 +101,39 @@ type TypeInfo interface {
 	fmt.Stringer
 }
 
-// TypeInfoFromSqlType takes in a sql.Type and returns the relevant TypeInfo.
-func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
+// FromSqlType takes in a sql.Type and returns the most relevant TypeInfo.
+func FromSqlType(sqlType sql.Type) (TypeInfo, error) {
 	switch sqlType.Type() {
+	case sqltypes.Null:
+		return NullType, nil
 	case sqltypes.Int8:
-		return &intImpl{IntWidth8}, nil
+		return Int8Type, nil
 	case sqltypes.Int16:
-		return &intImpl{IntWidth16}, nil
+		return Int16Type, nil
 	case sqltypes.Int24:
-		return &intImpl{IntWidth24}, nil
+		return Int24Type, nil
 	case sqltypes.Int32:
-		return &intImpl{IntWidth32}, nil
+		return Int32Type, nil
 	case sqltypes.Int64:
-		return &intImpl{IntWidth64}, nil
+		return Int64Type, nil
 	case sqltypes.Uint8:
-		return &uintImpl{UintWidth8}, nil
+		return Uint8Type, nil
 	case sqltypes.Uint16:
-		return &uintImpl{UintWidth16}, nil
+		return Uint16Type, nil
 	case sqltypes.Uint24:
-		return &uintImpl{UintWidth24}, nil
+		return Uint24Type, nil
 	case sqltypes.Uint32:
-		return &uintImpl{UintWidth32}, nil
+		return Uint32Type, nil
 	case sqltypes.Uint64:
-		return &uintImpl{UintWidth64}, nil
+		return Uint64Type, nil
 	case sqltypes.Float32:
-		return &floatImpl{FloatWidth32}, nil
+		return Float32Type, nil
 	case sqltypes.Float64:
-		return &floatImpl{FloatWidth64}, nil
+		return Float64Type, nil
 	case sqltypes.Timestamp:
 		datetimeType, ok := sqlType.(sql.DatetimeType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "DatetimeType" from SQL basetype "Timestamp"`)
+			return nil, fmt.Errorf(`expected "DatetimeTypeIdentifier" from SQL basetype "Timestamp"`)
 		}
 		return &datetimeImpl{
 			Min:      datetimeType.MinimumTime(),
@@ -136,7 +143,7 @@ func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
 	case sqltypes.Date:
 		datetimeType, ok := sqlType.(sql.DatetimeType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "DatetimeType" from SQL basetype "Date"`)
+			return nil, fmt.Errorf(`expected "DatetimeTypeIdentifier" from SQL basetype "Date"`)
 		}
 		return &datetimeImpl{
 			Min:      datetimeType.MinimumTime(),
@@ -144,11 +151,11 @@ func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
 			DateOnly: true,
 		}, nil
 	case sqltypes.Time:
-		return &timeImpl{}, nil
+		return TimeType, nil
 	case sqltypes.Datetime:
 		datetimeType, ok := sqlType.(sql.DatetimeType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "DatetimeType" from SQL basetype "Datetime"`)
+			return nil, fmt.Errorf(`expected "DatetimeTypeIdentifier" from SQL basetype "Datetime"`)
 		}
 		return &datetimeImpl{
 			Min:      datetimeType.MinimumTime(),
@@ -156,11 +163,11 @@ func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
 			DateOnly: false,
 		}, nil
 	case sqltypes.Year:
-		return &yearImpl{}, nil
+		return YearType, nil
 	case sqltypes.Decimal:
 		decimalType, ok := sqlType.(sql.DecimalType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "DecimalType" from SQL basetype "Decimal"`)
+			return nil, fmt.Errorf(`expected "DecimalTypeIdentifier" from SQL basetype "Decimal"`)
 		}
 		return &decimalImpl{decimalType}, nil
 	case sqltypes.Text:
@@ -214,19 +221,19 @@ func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
 	case sqltypes.Bit:
 		bitType, ok := sqlType.(sql.BitType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "BitType" from SQL basetype "Bit"`)
+			return nil, fmt.Errorf(`expected "BitTypeIdentifier" from SQL basetype "Bit"`)
 		}
 		return &bitImpl{bitType}, nil
 	case sqltypes.Enum:
 		enumType, ok := sqlType.(sql.EnumType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "EnumType" from SQL basetype "Enum"`)
+			return nil, fmt.Errorf(`expected "EnumTypeIdentifier" from SQL basetype "Enum"`)
 		}
 		return &enumImpl{enumType}, nil
 	case sqltypes.Set:
 		setType, ok := sqlType.(sql.SetType)
 		if !ok {
-			return nil, fmt.Errorf(`expected "SetType" from SQL basetype "Set"`)
+			return nil, fmt.Errorf(`expected "SetTypeIdentifier" from SQL basetype "Set"`)
 		}
 		return &setImpl{setType}, nil
 	default:
@@ -234,65 +241,63 @@ func TypeInfoFromSqlType(sqlType sql.Type) (TypeInfo, error) {
 	}
 }
 
-// TypeInfoFromIdentifierParams constructs a TypeInfo from the given identifier and parameters.
-func TypeInfoFromIdentifierParams(id Identifier, params map[string]string) (TypeInfo, error) {
+// FromTypeParams constructs a TypeInfo from the given identifier and parameters.
+func FromTypeParams(id Identifier, params map[string]string) (TypeInfo, error) {
 	switch id {
-	case BitType:
-		return CreateBitType(params)
-	case BoolType:
-		return CreateBoolType(params)
-	case DatetimeType:
-		return CreateDatetimeType(params)
-	case DecimalType:
-		return CreateDecimalType(params)
-	case EnumType:
-		return CreateEnumType(params)
-	case FloatType:
-		return CreateFloatType(params)
-	case IntType:
-		return CreateIntType(params)
-	case InlineBlobType:
-		return CreateInlineBlobType(params)
-	case SetType:
-		return CreateSetType(params)
-	case TimeType:
-		return CreateTimeType(params)
-	case UintType:
-		return CreateUintType(params)
-	case UuidType:
-		return CreateUuidType(params)
-	case VarBinaryType:
-		return CreateVarBinaryType(params)
-	case VarStringType:
-		return CreateVarStringType(params)
-	case YearType:
-		return CreateYearType(params)
+	case BitTypeIdentifier:
+		return CreateBitTypeFromParams(params)
+	case BoolTypeIdentifier:
+		return BoolType, nil
+	case DatetimeTypeIdentifier:
+		return CreateDatetimeTypeFromParams(params)
+	case DecimalTypeIdentifier:
+		return CreateDecimalTypeFromParams(params)
+	case EnumTypeIdentifier:
+		return CreateEnumTypeFromParams(params)
+	case FloatTypeIdentifier:
+		return CreateFloatTypeFromParams(params)
+	case InlineBlobTypeIdentifier:
+		return InlineBlobType, nil
+	case IntTypeIdentifier:
+		return CreateIntTypeFromParams(params)
+	case NullTypeIdentifier:
+		return NullType, nil
+	case SetTypeIdentifier:
+		return CreateSetTypeFromParams(params)
+	case TimeTypeIdentifier:
+		return TimeType, nil
+	case TupleIdentifier:
+		return TupleType, nil
+	case UintTypeIdentifier:
+		return CreateUintTypeFromParams(params)
+	case UuidTypeIdentifier:
+		return UuidType, nil
+	case VarBinaryTypeIdentifier:
+		return CreateVarBinaryTypeFromParams(params)
+	case VarStringTypeIdentifier:
+		return CreateVarStringTypeFromParams(params)
+	case YearTypeIdentifier:
+		return YearType, nil
 	default:
 		return nil, fmt.Errorf(`"%v" cannot be made from an identifier and params`, id)
 	}
 }
 
-// DefaultTypeInfo returns the default TypeInfo for a given types.Value.
-func DefaultTypeInfo(kind types.NomsKind) TypeInfo {
+// FromKind returns the default TypeInfo for a given types.Value.
+func FromKind(kind types.NomsKind) TypeInfo {
 	switch kind {
 	case types.BoolKind:
-		return &boolImpl{}
+		return BoolType
 	case types.FloatKind:
-		return &floatImpl{FloatWidth64}
-	case types.StringKind:
-		return &varStringImpl{
-			sql.Collation_Default,
-			1<<32-1,
-			false,
-		}
-	case types.UUIDKind:
-		return &uuidImpl{}
-	case types.IntKind:
-		return &intImpl{IntWidth64}
-	case types.UintKind:
-		return &uintImpl{UintWidth64}
+		return Float64Type
 	case types.InlineBlobKind:
-		return &inlineBlobImpl{}
+		return InlineBlobType
+	case types.IntKind:
+		return Int64Type
+	case types.NullKind:
+		return NullType
+	case types.StringKind:
+		return StringDefaultType
 	case types.TimestampKind:
 		// Here we set it to the limits of the SQL Datetime type just so conversions
 		// between the two types are straightforward. This is an arbitrary decision and
@@ -302,20 +307,26 @@ func DefaultTypeInfo(kind types.NomsKind) TypeInfo {
 			sql.Datetime.MaximumTime(),
 			false,
 		}
+	case types.TupleKind:
+		return TupleType
+	case types.UintKind:
+		return Uint64Type
+	case types.UUIDKind:
+		return UuidType
 	default:
 		panic(fmt.Errorf(`no default type info for NomsKind "%v"`, kind.String()))
 	}
 }
 
 // ParseIdentifier takes in an Identifier in string form and returns the matching Identifier.
-// Returns UnknownType when the string match is not found.
+// Returns UnknownTypeIdentifier when the string match is not found.
 func ParseIdentifier(name string) Identifier {
 	id := Identifier(name)
 	_, ok := Identifiers[id]
 	if ok {
 		return id
 	}
-	return UnknownType
+	return UnknownTypeIdentifier
 }
 
 // String returns a string representation of the identifier. This may later be used in parsing to

@@ -15,60 +15,62 @@
 package typeinfo
 
 import (
-	"fmt"
-
 	"github.com/src-d/go-mysql-server/sql"
 
 	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
-type unknownImpl struct{}
+type nullImpl struct{}
 
-var _ TypeInfo = (*unknownImpl)(nil)
+var _ TypeInfo = (*nullImpl)(nil)
 
-var UnknownType TypeInfo = &unknownImpl{}
+var NullType TypeInfo = &nullImpl{}
 
 // ConvertNomsValueToValue implements TypeInfo interface.
-func (ti *unknownImpl) ConvertNomsValueToValue(types.Value) (interface{}, error) {
-	return nil, fmt.Errorf(`"Unknown" cannot convert any Noms value to a go value`)
+func (ti *nullImpl) ConvertNomsValueToValue(types.Value) (interface{}, error) {
+	return nil, nil
 }
 
 // ConvertValueToNomsValue implements TypeInfo interface.
-func (ti *unknownImpl) ConvertValueToNomsValue(interface{}) (types.Value, error) {
-	return nil, fmt.Errorf(`"Unknown" cannot convert any go value to a Noms value`)
+func (ti *nullImpl) ConvertValueToNomsValue(interface{}) (types.Value, error) {
+	return types.NullValue, nil
 }
 
 // Equals implements TypeInfo interface.
-func (ti *unknownImpl) Equals(TypeInfo) bool {
-	return false
+func (ti *nullImpl) Equals(other TypeInfo) bool {
+	if other == nil {
+		return false
+	}
+	_, ok := other.(*nullImpl)
+	return ok
 }
 
 // GetTypeIdentifier implements TypeInfo interface.
-func (ti *unknownImpl) GetTypeIdentifier() Identifier {
-	return UnknownTypeIdentifier
+func (ti *nullImpl) GetTypeIdentifier() Identifier {
+	return NullTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
-func (ti *unknownImpl) GetTypeParams() map[string]string {
+func (ti *nullImpl) GetTypeParams() map[string]string {
 	return nil
 }
 
 // IsValid implements TypeInfo interface.
-func (ti *unknownImpl) IsValid(v interface{}) bool {
-	return false
+func (ti *nullImpl) IsValid(interface{}) bool {
+	return true
 }
 
 // NomsKind implements TypeInfo interface.
-func (ti *unknownImpl) NomsKind() types.NomsKind {
-	return types.UnknownKind
+func (ti *nullImpl) NomsKind() types.NomsKind {
+	return types.NullKind
 }
 
 // String implements TypeInfo interface.
-func (ti *unknownImpl) String() string {
-	return "Unknown"
+func (ti *nullImpl) String() string {
+	return "Null"
 }
 
 // ToSqlType implements TypeInfo interface.
-func (ti *unknownImpl) ToSqlType() sql.Type {
-	panic(fmt.Errorf("unknown type info does not have a relevant SQL type"))
+func (ti *nullImpl) ToSqlType() sql.Type {
+	return sql.Null
 }

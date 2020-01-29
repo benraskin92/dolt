@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,27 +17,29 @@ package typeinfo
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/liquidata-inc/dolt/go/store/types"
-	"github.com/src-d/go-mysql-server/sql"
 	"math"
 	"strings"
+
+	"github.com/src-d/go-mysql-server/sql"
 	"vitess.io/vitess/go/sqltypes"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 type inlineBlobImpl struct{}
 
 var _ TypeInfo = (*inlineBlobImpl)(nil)
 
-func CreateInlineBlobType(map[string]string) (TypeInfo, error) {
-	return &inlineBlobImpl{}, nil
-}
+var InlineBlobType TypeInfo = &inlineBlobImpl{}
 
 // ConvertNomsValueToValue implements TypeInfo interface.
 func (ti *inlineBlobImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 	if val, ok := v.(types.InlineBlob); ok {
 		return strings.ToUpper(hex.EncodeToString(val)), nil
 	}
-
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -45,10 +47,14 @@ func (ti *inlineBlobImpl) ConvertNomsValueToValue(v types.Value) (interface{}, e
 func (ti *inlineBlobImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if _, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case []byte:
 			return types.InlineBlob(val), nil
 		case string:
 			return types.InlineBlob(val), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.InlineBlob:
 			return val, nil
 		case types.String:
@@ -71,7 +77,7 @@ func (ti *inlineBlobImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *inlineBlobImpl) GetTypeIdentifier() Identifier {
-	return InlineBlobType
+	return InlineBlobTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -97,7 +103,7 @@ func (ti *inlineBlobImpl) String() string {
 
 // ToSqlType implements TypeInfo interface.
 func (ti *inlineBlobImpl) ToSqlType() sql.Type {
-	return sql.MustCreateBlob(sqltypes.VarBinary, math.MaxUint16)
+	return sql.MustCreateBinary(sqltypes.VarBinary, math.MaxUint16)
 }
 
 // isValid is an internal implementation for the TypeInfo interface function IsValid.
@@ -105,10 +111,14 @@ func (ti *inlineBlobImpl) ToSqlType() sql.Type {
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *inlineBlobImpl) isValid(v interface{}) (artifact []byte, ok bool) {
 	switch val := v.(type) {
+	case nil:
+		return nil, true
 	case []byte:
 		return nil, len(val) <= math.MaxUint16
 	case string:
 		return nil, len(val) <= math.MaxUint16
+	case types.Null:
+		return nil, true
 	case types.InlineBlob:
 		return nil, len(val) <= math.MaxUint16
 	case types.String:

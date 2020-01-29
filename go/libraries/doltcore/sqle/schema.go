@@ -117,7 +117,7 @@ func SqlColToDoltCol(tag uint64, col *sql.Column) (schema.Column, error) {
 	if !col.Nullable {
 		constraints = append(constraints, schema.NotNullConstraint{})
 	}
-	typeInfo, err := typeinfo.TypeInfoFromSqlType(col.Type)
+	typeInfo, err := typeinfo.FromSqlType(col.Type)
 	if err != nil {
 		return schema.Column{}, err
 	}

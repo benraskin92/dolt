@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,31 +16,36 @@ package typeinfo
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
+	"github.com/src-d/go-mysql-server/sql"
 	"vitess.io/vitess/go/sqltypes"
 
 	"github.com/liquidata-inc/dolt/go/store/types"
-
-	"github.com/src-d/go-mysql-server/sql"
 )
 
 const (
-	varStringTypeParam_Collate = "collate"
-	varStringTypeParam_Length = "length"
+	varStringTypeParam_Collate              = "collate"
+	varStringTypeParam_Length               = "length"
 	varStringTypeParam_RemoveTrailingSpaces = "rts"
 )
 
-type varStringImpl struct{
-	Collation sql.Collation
-	MaxLength int64
+type varStringImpl struct {
+	Collation            sql.Collation
+	MaxLength            int64
 	RemoveTrailingSpaces bool
 }
 
 var _ TypeInfo = (*varStringImpl)(nil)
+var StringDefaultType TypeInfo = &varStringImpl{
+	sql.Collation_Default,
+	math.MaxUint32,
+	false,
+}
 
-func CreateVarStringType(params map[string]string) (TypeInfo, error) {
+func CreateVarStringTypeFromParams(params map[string]string) (TypeInfo, error) {
 	ti := &varStringImpl{}
 	var err error
 	if collationStr, ok := params[varStringTypeParam_Collate]; ok {
@@ -70,6 +75,9 @@ func (ti *varStringImpl) ConvertNomsValueToValue(v types.Value) (interface{}, er
 		}
 		return string(val), nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -77,6 +85,8 @@ func (ti *varStringImpl) ConvertNomsValueToValue(v types.Value) (interface{}, er
 func (ti *varStringImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			if val {
 				return types.String("1"), nil
@@ -111,6 +121,8 @@ func (ti *varStringImpl) ConvertValueToNomsValue(v interface{}) (types.Value, er
 				return types.String(strings.TrimRight(val, " ")), nil
 			}
 			return types.String(val), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			if val {
 				return types.String("1"), nil
@@ -147,7 +159,7 @@ func (ti *varStringImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *varStringImpl) GetTypeIdentifier() Identifier {
-	return VarStringType
+	return VarStringTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -179,7 +191,7 @@ func (ti *varStringImpl) String() string {
 	if ti.RemoveTrailingSpaces {
 		removeTrailingSpaces = ", RemoveTrailingSpaces"
 	}
-	return fmt.Sprintf(`VarString("%v", %v%v)`, ti.Collation.String(), ti.MaxLength, removeTrailingSpaces)
+	return fmt.Sprintf(`VarString(%v, %v%v)`, ti.Collation.String(), ti.MaxLength, removeTrailingSpaces)
 }
 
 // ToSqlType implements TypeInfo interface.
@@ -194,7 +206,12 @@ func (ti *varStringImpl) ToSqlType() sql.Type {
 	// VarChar is more restrictive than Text
 	sqlType, err := sql.CreateString(sqltypes.VarChar, ti.MaxLength, ti.Collation)
 	if err != nil {
-		sqlType, err = sql.CreateString(sqltypes.Text, ti.MaxLength, ti.Collation)
+		// The SQL type has a max character limit
+		maxLength := ti.MaxLength
+		if maxLength > sql.LongText.MaxCharacterLength() {
+			maxLength = sql.LongText.MaxCharacterLength()
+		}
+		sqlType, err = sql.CreateString(sqltypes.Text, maxLength, ti.Collation)
 		if err != nil {
 			panic(err)
 		}
@@ -208,6 +225,8 @@ func (ti *varStringImpl) ToSqlType() sql.Type {
 func (ti *varStringImpl) isValid(v interface{}) (artifact string, ok bool) {
 	//TODO: handle collations
 	switch val := v.(type) {
+	case nil:
+		return "", true
 	case bool:
 		return "", ti.MaxLength >= 1
 	case int:
@@ -248,6 +267,8 @@ func (ti *varStringImpl) isValid(v interface{}) (artifact string, ok bool) {
 		return strVal, int64(len(strVal)) <= ti.MaxLength
 	case string:
 		return "", int64(len(val)) <= ti.MaxLength
+	case types.Null:
+		return "", true
 	case types.Bool:
 		return "", ti.MaxLength >= 1
 	case types.Int:

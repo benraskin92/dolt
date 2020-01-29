@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@
 package typeinfo
 
 import (
-"fmt"
+	"fmt"
 
-"github.com/liquidata-inc/dolt/go/store/types"
-"github.com/src-d/go-mysql-server/sql"
+	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 // This is a dolt implementation of the MySQL type Time, thus most of the functionality
@@ -27,9 +28,7 @@ type timeImpl struct{}
 
 var _ TypeInfo = (*timeImpl)(nil)
 
-func CreateTimeType(map[string]string) (TypeInfo, error) {
-	return &timeImpl{}, nil
-}
+var TimeType TypeInfo = &timeImpl{}
 
 // ConvertNomsValueToValue implements TypeInfo interface.
 func (ti *timeImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
@@ -40,12 +39,19 @@ func (ti *timeImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 		}
 		return res, nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
 // ConvertValueToNomsValue implements TypeInfo interface.
 func (ti *timeImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
+		switch v.(type) {
+		case nil, types.Null:
+			return types.NullValue, nil
+		}
 		return types.String(artifact), nil
 	}
 	return nil, fmt.Errorf(`"%v" cannot convert value "%v" of type "%T" as it is invalid`, ti.String(), v, v)
@@ -62,7 +68,7 @@ func (ti *timeImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *timeImpl) GetTypeIdentifier() Identifier {
-	return TimeType
+	return TimeTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -95,8 +101,12 @@ func (ti *timeImpl) ToSqlType() sql.Type {
 // Some validity checks process the value into its final form, which may be returned
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *timeImpl) isValid(v interface{}) (artifact string, ok bool) {
-	// convert some Noms values to their standard golang equivalents
+	// convert some Noms values to their standard golang equivalents, except Null
 	switch val := v.(type) {
+	case nil:
+		return "", true
+	case types.Null:
+		return "", true
 	case types.Bool:
 		v = bool(val)
 	case types.Int:

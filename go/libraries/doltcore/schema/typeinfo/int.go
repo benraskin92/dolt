@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,8 +25,9 @@ import (
 )
 
 type IntWidth int8
+
 const (
-	IntWidth8 IntWidth = 8
+	IntWidth8  IntWidth = 8
 	IntWidth16 IntWidth = 16
 	IntWidth24 IntWidth = 24
 	IntWidth32 IntWidth = 32
@@ -34,34 +35,42 @@ const (
 )
 
 const (
-	MaxInt24 = 1<<23 - 1
-	MinInt24 = -1 << 23
+	MaxInt24            = 1<<23 - 1
+	MinInt24            = -1 << 23
+	intTypeParams_Width = "width"
 )
 
-type intImpl struct{
+type intImpl struct {
 	Width IntWidth
 }
 
 var _ TypeInfo = (*intImpl)(nil)
+var (
+	Int8Type  TypeInfo = &intImpl{IntWidth8}
+	Int16Type TypeInfo = &intImpl{IntWidth16}
+	Int24Type TypeInfo = &intImpl{IntWidth24}
+	Int32Type TypeInfo = &intImpl{IntWidth32}
+	Int64Type TypeInfo = &intImpl{IntWidth64}
+)
 
-func CreateIntType(params map[string]string) (TypeInfo, error) {
-	if width, ok := params["w"]; ok {
+func CreateIntTypeFromParams(params map[string]string) (TypeInfo, error) {
+	if width, ok := params[intTypeParams_Width]; ok {
 		switch width {
 		case "8":
-			return &intImpl{IntWidth8}, nil
+			return Int8Type, nil
 		case "16":
-			return &intImpl{IntWidth16}, nil
+			return Int16Type, nil
 		case "24":
-			return &intImpl{IntWidth24}, nil
+			return Int24Type, nil
 		case "32":
-			return &intImpl{IntWidth32}, nil
+			return Int32Type, nil
 		case "64":
-			return &intImpl{IntWidth64}, nil
+			return Int64Type, nil
 		default:
-			return nil, fmt.Errorf(`create int type info has "w" param with value "%v"`, width)
+			return nil, fmt.Errorf(`create int type info has "%v" param with value "%v"`, intTypeParams_Width, width)
 		}
 	}
-	return nil, fmt.Errorf(`create int type info is missing "w" param`)
+	return nil, fmt.Errorf(`create int type info is missing "%v" param`, intTypeParams_Width)
 }
 
 // ConvertNomsValueToValue implements TypeInfo interface.
@@ -82,6 +91,9 @@ func (ti *intImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 			panic(fmt.Errorf(`int width "%v" is not valid`, ti.Width))
 		}
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -89,6 +101,8 @@ func (ti *intImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 func (ti *intImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			if val {
 				return types.Int(1), nil
@@ -120,6 +134,8 @@ func (ti *intImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 			return types.Int(val), nil
 		case string:
 			return types.Int(artifact), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			if val {
 				return types.Int(1), nil
@@ -153,12 +169,12 @@ func (ti *intImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *intImpl) GetTypeIdentifier() Identifier {
-	return IntType
+	return IntTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
 func (ti *intImpl) GetTypeParams() map[string]string {
-	return map[string]string{"w":strconv.Itoa(int(ti.Width))}
+	return map[string]string{intTypeParams_Width: strconv.Itoa(int(ti.Width))}
 }
 
 // IsValid implements TypeInfo interface.
@@ -235,6 +251,8 @@ func (ti *intImpl) isValid(v interface{}) (artifact int64, ok bool) {
 	}
 
 	switch val := v.(type) {
+	case nil:
+		return 0, true
 	case bool:
 		return 0, true
 	case int:
@@ -264,6 +282,8 @@ func (ti *intImpl) isValid(v interface{}) (artifact int64, ok bool) {
 	case string:
 		intVal, err := strconv.ParseInt(val, 10, 64)
 		return intVal, err == nil
+	case types.Null:
+		return 0, true
 	case types.Bool:
 		return 0, true
 	case types.Int:

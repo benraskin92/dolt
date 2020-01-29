@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,27 +19,28 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 const (
-	datetimeTypeParam_Min = "min"
-	datetimeTypeParam_MinNano = "minnano"
-	datetimeTypeParam_Max = "max"
-	datetimeTypeParam_MaxNano = "maxnano"
+	datetimeTypeParam_Min      = "min"
+	datetimeTypeParam_MinNano  = "minnano"
+	datetimeTypeParam_Max      = "max"
+	datetimeTypeParam_MaxNano  = "maxnano"
 	datetimeTypeParam_DateOnly = "date"
 )
 
-type datetimeImpl struct{
-	Min time.Time
-	Max time.Time
+type datetimeImpl struct {
+	Min      time.Time
+	Max      time.Time
 	DateOnly bool
 }
 
 var _ TypeInfo = (*datetimeImpl)(nil)
 
-func CreateDatetimeType(params map[string]string) (TypeInfo, error) {
+func CreateDatetimeTypeFromParams(params map[string]string) (TypeInfo, error) {
 	var minInt int64
 	var minNanoInt int64
 	var err error
@@ -101,6 +102,9 @@ func (ti *datetimeImpl) ConvertNomsValueToValue(v types.Value) (interface{}, err
 		}
 		return nil, fmt.Errorf(`"%v" cannot convert time "%v" to value`, ti.String(), t.String())
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -109,8 +113,12 @@ func (ti *datetimeImpl) ConvertValueToNomsValue(v interface{}) (types.Value, err
 	//TODO: handle the zero value as a special case that is valid for all ranges
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case string:
 			return types.Timestamp(artifact), nil
+		case types.Null:
+			return types.NullValue, nil
 		case time.Time:
 			return types.Timestamp(artifact), nil
 		case types.String:
@@ -137,7 +145,7 @@ func (ti *datetimeImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *datetimeImpl) GetTypeIdentifier() Identifier {
-	return DatetimeType
+	return DatetimeTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -191,6 +199,8 @@ func (ti *datetimeImpl) ToSqlType() sql.Type {
 func (ti *datetimeImpl) isValid(v interface{}) (artifact time.Time, ok bool) {
 	//TODO: handle the zero value as a special case that is valid for all ranges
 	switch val := v.(type) {
+	case nil:
+		return time.Time{}, true
 	case string:
 		for _, format := range sql.TimestampDatetimeLayouts {
 			if t, err := time.Parse(format, val); err == nil {
@@ -205,6 +215,8 @@ func (ti *datetimeImpl) isValid(v interface{}) (artifact time.Time, ok bool) {
 			}
 		}
 		return time.Time{}, false
+	case types.Null:
+		return time.Time{}, true
 	case time.Time:
 		val = val.UTC()
 		if ti.DateOnly {

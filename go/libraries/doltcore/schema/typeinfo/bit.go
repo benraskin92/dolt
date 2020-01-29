@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 const (
@@ -28,13 +29,13 @@ const (
 
 // This is a dolt implementation of the MySQL type Bit, thus most of the functionality
 // within is directly reliant on the go-mysql-server implementation.
-type bitImpl struct{
+type bitImpl struct {
 	sqlBitType sql.BitType
 }
 
 var _ TypeInfo = (*bitImpl)(nil)
 
-func CreateBitType(params map[string]string) (TypeInfo, error) {
+func CreateBitTypeFromParams(params map[string]string) (TypeInfo, error) {
 	if bitStr, ok := params[bitTypeParam_Bits]; ok {
 		bitUint, err := strconv.ParseUint(bitStr, 10, 8)
 		if err != nil {
@@ -59,12 +60,19 @@ func (ti *bitImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 		}
 		return res, nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
 // ConvertValueToNomsValue implements TypeInfo interface.
 func (ti *bitImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
+		switch v.(type) {
+		case nil, types.Null:
+			return types.NullValue, nil
+		}
 		return types.Uint(artifact), nil
 	}
 	return nil, fmt.Errorf(`"%v" cannot convert value "%v" of type "%T" as it is invalid`, ti.String(), v, v)
@@ -83,7 +91,7 @@ func (ti *bitImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *bitImpl) GetTypeIdentifier() Identifier {
-	return BitType
+	return BitTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -118,8 +126,12 @@ func (ti *bitImpl) ToSqlType() sql.Type {
 // Some validity checks process the value into its final form, which may be returned
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *bitImpl) isValid(v interface{}) (artifact uint64, ok bool) {
-	// convert some Noms values to their standard golang equivalents
+	// convert some Noms values to their standard golang equivalents, except Null
 	switch val := v.(type) {
+	case nil:
+		return 0, true
+	case types.Null:
+		return 0, true
 	case types.Bool:
 		v = bool(val)
 	case types.Int:

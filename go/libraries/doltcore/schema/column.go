@@ -44,7 +44,7 @@ var (
 		InvalidTag,
 		types.NullKind,
 		false,
-		typeinfo.UnknownTypeInfo,
+		typeinfo.NullType,
 		nil,
 	}
 )
@@ -79,7 +79,7 @@ type Column struct {
 
 // NewColumn creates a Column instance with the default type info for the NomsKind
 func NewColumn(name string, tag uint64, kind types.NomsKind, partOfPK bool, constraints ...ColConstraint) Column {
-	typeInfo := typeinfo.DefaultTypeInfo(kind)
+	typeInfo := typeinfo.FromKind(kind)
 	col, err := NewColumnWithTypeInfo(name, tag, typeInfo, partOfPK, constraints...)
 	if err != nil {
 		panic(err)

@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,24 +19,25 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 const (
 	setTypeParam_Collation = "collate"
-	setTypeParam_Values = "vals"
+	setTypeParam_Values    = "vals"
 )
 
 // This is a dolt implementation of the MySQL type Set, thus most of the functionality
 // within is directly reliant on the go-mysql-server implementation.
-type setImpl struct{
+type setImpl struct {
 	sqlSetType sql.SetType
 }
 
 var _ TypeInfo = (*setImpl)(nil)
 
-func CreateSetType(params map[string]string) (TypeInfo, error) {
+func CreateSetTypeFromParams(params map[string]string) (TypeInfo, error) {
 	var collation sql.Collation
 	var err error
 	if collationStr, ok := params[setTypeParam_Collation]; ok {
@@ -73,12 +74,19 @@ func (ti *setImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
 		}
 		return res, nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
 // ConvertValueToNomsValue implements TypeInfo interface.
 func (ti *setImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
+		switch v.(type) {
+		case nil, types.Null:
+			return types.NullValue, nil
+		}
 		return types.String(artifact), nil
 	}
 	return nil, fmt.Errorf(`"%v" cannot convert value "%v" of type "%T" as it is invalid`, ti.String(), v, v)
@@ -104,7 +112,7 @@ func (ti *setImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *setImpl) GetTypeIdentifier() Identifier {
-	return SetType
+	return SetTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -118,7 +126,7 @@ func (ti *setImpl) GetTypeParams() map[string]string {
 	}
 	return map[string]string{
 		setTypeParam_Collation: ti.sqlSetType.Collation().String(),
-		setTypeParam_Values: sb.String(),
+		setTypeParam_Values:    sb.String(),
 	}
 }
 
@@ -135,7 +143,7 @@ func (ti *setImpl) NomsKind() types.NomsKind {
 
 // String implements TypeInfo interface.
 func (ti *setImpl) String() string {
-	return fmt.Sprintf(`Set(Collation: "%v", Values: %v)`, ti.sqlSetType.Collation().String(), strings.Join(ti.sqlSetType.Values(), ","))
+	return fmt.Sprintf(`Set(Collation: %v, Values: %v)`, ti.sqlSetType.Collation().String(), strings.Join(ti.sqlSetType.Values(), ","))
 }
 
 // ToSqlType implements TypeInfo interface.
@@ -147,8 +155,12 @@ func (ti *setImpl) ToSqlType() sql.Type {
 // Some validity checks process the value into its final form, which may be returned
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *setImpl) isValid(v interface{}) (artifact string, ok bool) {
-	// convert some Noms values to their standard golang equivalents
+	// convert some Noms values to their standard golang equivalents, except Null
 	switch val := v.(type) {
+	case nil:
+		return "", true
+	case types.Null:
+		return "", true
 	case types.Bool:
 		v = bool(val)
 	case types.Int:

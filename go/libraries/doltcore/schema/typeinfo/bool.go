@@ -1,4 +1,4 @@
-// Copyright 2019 Liquidata, Inc.
+// Copyright 2020 Liquidata, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,17 +19,16 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/liquidata-inc/dolt/go/store/types"
 	"github.com/src-d/go-mysql-server/sql"
+
+	"github.com/liquidata-inc/dolt/go/store/types"
 )
 
 type boolImpl struct{}
 
 var _ TypeInfo = (*boolImpl)(nil)
 
-func CreateBoolType(map[string]string) (TypeInfo, error) {
-	return &boolImpl{}, nil
-}
+var BoolType TypeInfo = &boolImpl{}
 
 // ConvertNomsValueToValue implements TypeInfo interface.
 func (ti *boolImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) {
@@ -39,6 +38,9 @@ func (ti *boolImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 		}
 		return uint64(0), nil
 	}
+	if _, ok := v.(types.Null); ok || v == nil {
+		return nil, nil
+	}
 	return nil, fmt.Errorf(`"%v" cannot convert NomsKind "%v" to a value`, ti.String(), v.Kind())
 }
 
@@ -46,6 +48,8 @@ func (ti *boolImpl) ConvertNomsValueToValue(v types.Value) (interface{}, error) 
 func (ti *boolImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) {
 	if artifact, ok := ti.isValid(v); ok {
 		switch val := v.(type) {
+		case nil:
+			return types.NullValue, nil
 		case bool:
 			return types.Bool(val), nil
 		case int:
@@ -74,6 +78,8 @@ func (ti *boolImpl) ConvertValueToNomsValue(v interface{}) (types.Value, error) 
 			return types.Bool(int64(math.Round(val)) != 0), nil
 		case string:
 			return types.Bool(artifact != 0), nil
+		case types.Null:
+			return types.NullValue, nil
 		case types.Bool:
 			return val, nil
 		case types.Int:
@@ -102,7 +108,7 @@ func (ti *boolImpl) Equals(other TypeInfo) bool {
 
 // GetTypeIdentifier implements TypeInfo interface.
 func (ti *boolImpl) GetTypeIdentifier() Identifier {
-	return BoolType
+	return BoolTypeIdentifier
 }
 
 // GetTypeParams implements TypeInfo interface.
@@ -136,6 +142,8 @@ func (ti *boolImpl) ToSqlType() sql.Type {
 // as an artifact so that a value doesn't need to be processed twice in some scenarios.
 func (ti *boolImpl) isValid(v interface{}) (artifact int64, ok bool) {
 	switch val := v.(type) {
+	case nil:
+		return 0, true
 	case bool:
 		return 0, true
 	case int:
@@ -163,8 +171,17 @@ func (ti *boolImpl) isValid(v interface{}) (artifact int64, ok bool) {
 	case float64:
 		return 0, true
 	case string:
+		b, err := strconv.ParseBool(val)
+		if err == nil {
+			if b {
+				return 1, true
+			}
+			return 0, true
+		}
 		valInt, err := strconv.ParseInt(val, 10, 64)
 		return valInt, err == nil
+	case types.Null:
+		return 0, true
 	case types.Bool:
 		return 0, true
 	case types.Int:
@@ -174,6 +191,13 @@ func (ti *boolImpl) isValid(v interface{}) (artifact int64, ok bool) {
 	case types.Float:
 		return 0, true
 	case types.String:
+		b, err := strconv.ParseBool(string(val))
+		if err == nil {
+			if b {
+				return 1, true
+			}
+			return 0, true
+		}
 		valInt, err := strconv.ParseInt(string(val), 10, 64)
 		return valInt, err == nil
 	default:
