@@ -145,7 +145,7 @@ func (cmd SqlCmd) Exec(ctx context.Context, commandStr string, args []string, dE
 			return HandleVErrAndExitCode(UpdateWorkingWithVErr(dEnv, se.sdb.Root()), usage)
 		} else {
 			if saveQuery {
-				cmd.saveQuery(query, saveName, saveMessage)
+				cmd.saveQuery(context.Background(), se.sdb.Root(), dEnv, query, saveName, saveMessage)
 			}
 			return 0
 		}
@@ -193,8 +193,13 @@ func (cmd SqlCmd) Exec(ctx context.Context, commandStr string, args []string, dE
 }
 
 // Saves the query given to the catalog with the name and message given.
-func (cmd SqlCmd) saveQuery(query string, name string, message string) {
-	// TODO: implement me
+func (cmd SqlCmd) saveQuery(ctx context.Context, root *doltdb.RootValue, dEnv *env.DoltEnv, query string, name string, message string) error {
+	newRoot, err := dsqle.NewQueryCatalogEntry(ctx, root, name, query, message)
+	if err != nil {
+		return err
+	}
+
+	return UpdateWorkingWithVErr(dEnv, newRoot)
 }
 
 // ScanStatements is a split function for a Scanner that returns each SQL statement in the input as a token. It doesn't
